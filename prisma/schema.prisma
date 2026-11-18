@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum IssueStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+// Ordered from lowest to highest so sorting by priority works naturally
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ActivityType {
+  ISSUE_CREATED
+  ISSUE_UPDATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ISSUE_DELETED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projects       Project[]
+  reportedIssues Issue[]       @relation("IssueReporter")
+  activities     ActivityLog[]
+
+  @@map("users")
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  name         String   @db.VarChar(60)
+  key          String   @db.VarChar(6)
+  description  String?  @db.VarChar(500)
+  color        String   @default("#6366f1") @db.VarChar(7)
+  issueCounter Int      @default(0)
+  ownerId      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner      User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  issues     Issue[]
+  activities ActivityLog[]
+
+  @@unique([ownerId, key])
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model Issue {
+  id          String        @id @default(cuid())
+  number      Int
+  title       String        @db.VarChar(200)
+  description String?       @db.Text
+  status      IssueStatus   @default(TODO)
+  priority    IssuePriority @default(MEDIUM)
+  storyPoints Int           @default(1)
+  dueDate     DateTime?
+  completedAt DateTime?
+  projectId   String
+  reporterId  String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reporter   User          @relation("IssueReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  activities ActivityLog[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+  @@index([projectId, priority])
+  @@index([dueDate])
+  @@index([completedAt])
+  @@map("issues")
+}
+
+model ActivityLog {
+  id         String       @id @default(cuid())
+  type       ActivityType
+  field      String?      @db.VarChar(40)
+  fromValue  String?      @db.VarChar(255)
+  toValue    String?      @db.VarChar(255)
+  issueKey   String       @db.VarChar(20)
+  issueTitle String       @db.VarChar(200)
+  issueId    String?
+  projectId  String
+  actorId    String
+  createdAt  DateTime     @default(now())
+
+  issue   Issue?  @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User    @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([issueId, createdAt])
+  @@map("activity_logs")
+}
